@@ -2,10 +2,13 @@ plugins {
     id 'java'
     id 'application'
     id 'maven-publish'
+    id "com.github.johnrengelman.shadow" version "7.0.0"
 }
 
-group 'org.quiltmc'
-version '1.0-SNAPSHOT'
+group 'me.shedaniel.quiltmc'
+
+def runNumber = System.getenv("GITHUB_RUN_NUMBER") ?: "9999"
+version "1.0.$runNumber"
 
 // Target JDK 8
 tasks.withType(JavaCompile).configureEach {
@@ -18,7 +21,7 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 application {
-    mainClass = 'org.quiltmc.mappings_hasher.Main'
+    mainClass = 'me.shedaniel.quiltmc.mappings_hasher.Main'
 }
 
 repositories {
@@ -30,41 +33,51 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.quiltmc:quilt-json5:1.0.0'
-    implementation 'org.quiltmc:lorenz-tiny:3.0.0'
-    implementation 'org.cadixdev:lorenz-io-proguard:0.5.6'
-    implementation "org.ow2.asm:asm:9.1"
+    shadow 'org.quiltmc:quilt-json5:1.0.0'
+    shadow 'org.quiltmc:lorenz-tiny:3.0.0'
+    shadow 'org.cadixdev:lorenz-io-proguard:0.5.6'
+    shadow "org.ow2.asm:asm:9.1"
 }
 
 tasks.getByName("run").setArgsString(minecraftVersion)
 
-task mappingsJar(type: Jar) {
-    dependsOn run
-    from "mappings/hashed-${minecraftVersion}.tiny"
-    eachFile {
-        setName("hashed/mappings.tiny")
+jar {
+    archiveClassifier = "raw"
+}
+
+shadowJar {
+    archiveClassifier = null
+    configurations = [project.configurations.shadow]
+    relocate "org.quiltmc", "me.shedaniel.mappings_hasher.quiltmc"
+    relocate "net.fabricmc", "me.shedaniel.mappings_hasher.fabricmc"
+    relocate "org.cadixdev", "me.shedaniel.mappings_hasher.cadixdev"
+    relocate "org.objectweb.asm", "me.shedaniel.mappings_hasher.asm"
+    relocate "me.jamiemansfield", "me.shedaniel.mappings_hasher.jamiemansfield"
+}
+
+[configurations.apiElements, configurations.runtimeElements].each { config ->
+    (components.java as AdhocComponentWithVariants).withVariantsFromConfiguration(config) {
+        configurationVariant.artifacts.removeIf { artifact ->
+            artifact.file == tasks.jar.archiveFile.get().asFile
+        }
     }
 }
 
 publishing {
     publications {
         maven(MavenPublication) {
-            groupId = 'org.quiltmc'
-            artifactId = 'hashed-mojmap'
-            version = minecraftVersion
-            artifacts = [mappingsJar]
+            artifact tasks.shadowJar
         }
     }
     repositories {
         def ENV = System.getenv()
 
-        if (ENV.MAVEN_URL) {
-            repositories.maven {
-                url = ENV.MAVEN_URL
-
+        if (ENV.MAVEN_PASS) {
+            maven {
+                url = "https://deploy.shedaniel.me/"
                 credentials {
-                    username = ENV.MAVEN_USERNAME
-                    password = ENV.MAVEN_PASSWORD
+                    username = "shedaniel"
+                    password = ENV.MAVEN_PASS
                 }
             }
         }

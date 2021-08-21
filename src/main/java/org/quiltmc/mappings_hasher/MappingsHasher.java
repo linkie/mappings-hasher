@@ -42,6 +42,8 @@ public class MappingsHasher {
     public MappingSet generate(JarFile jar) {
         // Extract class information (for method overrides mostly)
         Set<ClassInfo> classes = classResolver.extractClassInfo(jar);
+        // Linkie removes package-info on mappings read, we should just ignore it
+        classes.removeIf(info -> !original.getClassMapping(info.name()).isPresent());
 
         // The class generating hashed names from class information and the original mappings
         HashedNameProvider nameProvider = new HashedNameProvider(classes, original, defaultPackage);
